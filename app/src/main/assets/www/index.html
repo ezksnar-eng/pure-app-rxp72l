@@ -414,7 +414,7 @@
                 <span>⚡ تعديل فوري (يتحدث بدون APK جديد)</span>
                 <label class="switch"><input type="checkbox" id="oLive"><span class="slider"></span></label>
             </div>
-            <div class="live-hint">ابنِ APK مرة وحدة، وبعدها أي تعديل تسويه اضغط «⚡ تحديث فوري» والتطبيق يتحدث لحاله عند كل واحد فاتحه. يحتاج مستودع عام، ويشمل الكود والملفات بس (مو الإعدادات والمكتبات).</div>
+            <div class="live-hint">ابنِ APK مرة وحدة، وبعدها أي تعديل تسويه اضغط «⚡ تحديث فوري» والتطبيق يتحدث لحاله عند كل واحد فاتحه. يحتاج مستودع عام، ويشمل الكود والملفات بس. ⚠️ ما يغيّر اسم التطبيق ولا أيقونته ولا المكتبات — هذولة جزء من الـ APK نفسه، لازم لهن بناء APK جديد.</div>
         </div>
 
         <div class="sec" data-modes="zip code" id="secSiteHead" style="cursor:pointer" role="button" tabindex="0"><span class="n">🌐</span>موقع يطلع بالبحث (اختياري)<button type="button" id="secSiteToggle" style="border:none;background:none;color:var(--magenta);font-weight:900;font-size:1rem;cursor:pointer;flex:0 0 auto">▾</button></div>
@@ -441,6 +441,12 @@
                 <label class="switch"><input type="checkbox" id="oPrivate"><span class="slider"></span></label>
             </div>
         </div>
+
+        <div class="sec" data-modes="url zip code python java kotlin lua"><span class="n">🔐</span>أذونات التطبيق</div>
+        <div class="toggle-group" data-modes="url zip code python java kotlin lua" id="permsGroup">
+            <div class="live-hint">فعّل أي إذن تحتاجه — التطبيق يطلبه من المستخدم أول ما يفتح.</div>
+        </div>
+
         <div class="toggle-group" data-modes="url zip code python java kotlin lua android">
             <div class="toggle-item">
                 <span>🎯 جهّز نسخة لنشرها على Google Play (AAB)</span>
@@ -754,6 +760,32 @@ const LANG_MODES = Object.keys(LANGS);
 const LIVE_MODES = ['zip', 'code', 'python', 'lua'];
 
 /* ---------------------------------------------------------------
+   أذونات الأندرويد — تنضاف للمانفست وتنطلب وقت التشغيل
+---------------------------------------------------------------- */
+const PERM_CATALOG = {
+    camera: { label: '📷 الكاميرا', hint: 'للكاميرا داخل التطبيق أو الموقع', xml: ['<uses-permission android:name="android.permission.CAMERA" />'], runtime: ['android.permission.CAMERA'] },
+    mic: { label: '🎤 المايكروفون', hint: 'لتسجيل الصوت', xml: ['<uses-permission android:name="android.permission.RECORD_AUDIO" />'], runtime: ['android.permission.RECORD_AUDIO'] },
+    notif: { label: '🔔 الإشعارات', hint: 'لإرسال إشعارات من التطبيق', xml: ['<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />'], runtime: ['android.permission.POST_NOTIFICATIONS'] },
+    media: { label: '🖼️ الصور والفيديو', hint: 'قراءة معرض الصور والفيديوهات', xml: ['<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />', '<uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />', '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />'], runtime: ['android.permission.READ_MEDIA_IMAGES', 'android.permission.READ_MEDIA_VIDEO', 'android.permission.READ_EXTERNAL_STORAGE'] },
+    location: { label: '📍 الموقع', hint: 'تحديد موقع الجهاز', xml: ['<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />', '<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />'], runtime: ['android.permission.ACCESS_FINE_LOCATION', 'android.permission.ACCESS_COARSE_LOCATION'] },
+    contacts: { label: '👤 جهات الاتصال', hint: 'قراءة جهات الاتصال', xml: ['<uses-permission android:name="android.permission.READ_CONTACTS" />'], runtime: ['android.permission.READ_CONTACTS'] },
+    allFiles: { label: '📁 كل ملفات الجهاز (وصول كامل للتخزين)', hint: 'يفتح صفحة أذونات خاصة بأندرويد لازم توافق عليها يدوياً', xml: ['<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />', '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="29" />', '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />'], runtime: ['android.permission.READ_EXTERNAL_STORAGE', 'android.permission.WRITE_EXTERNAL_STORAGE'], allFiles: true }
+};
+function permManifestLines(app) {
+    const out = [];
+    (app.permissions || []).forEach(k => { if (PERM_CATALOG[k]) out.push(...PERM_CATALOG[k].xml.map(l => '    ' + l)); });
+    return out;
+}
+function permRuntimeJava(app) {
+    const set = new Set();
+    (app.permissions || []).forEach(k => { if (PERM_CATALOG[k]) PERM_CATALOG[k].runtime.forEach(p => set.add(p)); });
+    return [...set].map(p => '"' + p + '"').join(', ');
+}
+function permNeedsAllFiles(app) {
+    return (app.permissions || []).some(k => PERM_CATALOG[k] && PERM_CATALOG[k].allFiles);
+}
+
+/* ---------------------------------------------------------------
    ZIP للغات ومشاريع الأندرويد
 ---------------------------------------------------------------- */
 function cleanZipEntries(entries) {
@@ -793,8 +825,18 @@ function normalizeSrcZip(entries, lang) {
     const pick = r => srcs.filter(f => r.test(f.path)).sort(cmp)[0];
     const main = pick(new RegExp('(^|/)main\\.' + ext + '$', 'i')) || pick(new RegExp('(^|/)(app|bot|run|index|init)\\.' + ext + '$', 'i')) || srcs.slice().sort(cmp)[0];
     const root = main.path.slice(0, main.path.lastIndexOf('/') + 1);
-    const files = clean.filter(f => f.path.startsWith(root)).map(f => ({ path: f.path.slice(root.length), data: f.data }));
-    return { files, entry: main.path.slice(root.length) };
+    let extraJava = [];
+    if (lang === 'python') {
+        /* لو الـ ZIP فيه ملفات جافا/كوتلن مع بايثون، نجمعهن ونضيفهن كمصدر جافا حقيقي يتبنى ويه التطبيق (تقدر تناديهن من بايثون عبر from java import *) */
+        const jsrcs = clean.filter(f => /\.(java|kt)$/i.test(f.path));
+        if (jsrcs.length) {
+            const jfirst = jsrcs[0].path.split('/')[0];
+            const jstrip = jsrcs.every(f => f.path.split('/').length > 1 && f.path.split('/')[0] === jfirst);
+            extraJava = jsrcs.map(f => ({ path: jstrip ? f.path.slice(jfirst.length + 1) : f.path, data: f.data }));
+        }
+    }
+    const files = clean.filter(f => f.path.startsWith(root) && !/\.(java|kt)$/i.test(f.path)).map(f => ({ path: f.path.slice(root.length), data: f.data }));
+    return { files, entry: main.path.slice(root.length), extraJava };
 }
 
 /* مشروع أندرويد جاهز: نقص المجلد الجذر عند settings.gradle */
@@ -893,15 +935,21 @@ function parseMaven(text) {
 const TPL = {
     web: String.raw`package __PKG__;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.Settings;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
+import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -939,6 +987,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        requestRuntimePerms();
 
         liveDir = new File(getFilesDir(), "live");
         liveDir.mkdirs();
@@ -996,6 +1045,23 @@ public class MainActivity extends Activity {
                 }
                 return true;
             }
+
+            @Override
+            public void onPermissionRequest(final PermissionRequest request) {
+                java.util.List<String> grant = new java.util.ArrayList<String>();
+                for (String res : request.getResources()) {
+                    if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(res) && checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                        grant.add(res);
+                    } else if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(res) && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        grant.add(res);
+                    }
+                }
+                if (!grant.isEmpty()) {
+                    request.grant(grant.toArray(new String[0]));
+                } else {
+                    request.deny();
+                }
+            }
         });
 
         webView.setDownloadListener(new DownloadListener() {
@@ -1047,6 +1113,26 @@ public class MainActivity extends Activity {
         });
         t.setDaemon(true);
         t.start();
+    }
+
+    private void requestRuntimePerms() {
+        java.util.List<String> need = new java.util.ArrayList<String>();
+        for (String p : new String[]{__PERM_LIST__}) {
+            if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) {
+                need.add(p);
+            }
+        }
+        if (!need.isEmpty()) {
+            requestPermissions(need.toArray(new String[0]), 7);
+        }
+        if (__NEEDS_ALL_FILES__ && Build.VERSION.SDK_INT >= 30 && !Environment.isExternalStorageManager()) {
+            try {
+                Intent i = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                i.setData(Uri.parse("package:" + getPackageName()));
+                startActivity(i);
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     private boolean handleUrl(Uri uri) {
@@ -1174,8 +1260,11 @@ import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -1215,10 +1304,8 @@ public class MainActivity extends Activity implements Host.Listener {
         super.onCreate(savedInstanceState);
         applyWindow();
         buildUi();
+        requestRuntimePerms();
         if (BG) {
-            if (Build.VERSION.SDK_INT >= 33) {
-                requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 7);
-            }
             Intent svc = new Intent(this, HostService.class);
             if (Build.VERSION.SDK_INT >= 26) {
                 startForegroundService(svc);
@@ -1230,6 +1317,26 @@ public class MainActivity extends Activity implements Host.Listener {
         Host.attach(this);
         if (WEB_PORT > 0) {
             watchPort();
+        }
+    }
+
+    private void requestRuntimePerms() {
+        java.util.List<String> need = new java.util.ArrayList<String>();
+        for (String p : new String[]{__PERM_LIST__}) {
+            if (checkSelfPermission(p) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                need.add(p);
+            }
+        }
+        if (!need.isEmpty()) {
+            requestPermissions(need.toArray(new String[0]), 7);
+        }
+        if (__NEEDS_ALL_FILES__ && Build.VERSION.SDK_INT >= 30 && !Environment.isExternalStorageManager()) {
+            try {
+                Intent i = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                i.setData(Uri.parse("package:" + getPackageName()));
+                startActivity(i);
+            } catch (Exception ignored) {
+            }
         }
     }
 
@@ -2479,7 +2586,9 @@ function buildTextFiles(app, opts) {
             PORT: String(mode === 'python' && app.pyRun === 'web' ? (app.pyPort || 8080) : 0),
             BG: String(bg),
             USES_FILES: String(LANGS[mode].usesFiles),
-            FULLSCREEN: String(!!app.fullscreen)
+            FULLSCREEN: String(!!app.fullscreen),
+            PERM_LIST: permRuntimeJava(app),
+            NEEDS_ALL_FILES: String(permNeedsAllFiles(app))
         });
         files.push(
             T(jp + 'MainActivity.java', renderTpl('console', map)),
@@ -2493,6 +2602,11 @@ function buildTextFiles(app, opts) {
         if (mode === 'java' || mode === 'kotlin') {
             srcFilesFor(app).filter(f => /\.(java|kt)$/i.test(f.path)).forEach(f => files.push({ path: 'app/src/main/java/' + f.path, data: f.data }));
         }
+        if (mode === 'python' && app.srcExtraJava && app.srcExtraJava.length) {
+            /* ملفات جافا/كوتلن انلقت وياية بايثون بالـ ZIP — تتبنى كمصدر حقيقي، وبايثون يكدر يناديها بـ from java import ClassName */
+            app.srcExtraJava.forEach(f => files.push({ path: 'app/src/main/java/' + f.path, data: f.data }));
+            if (app.srcExtraJava.some(f => /\.kt$/i.test(f.path))) map.NEEDS_KOTLIN = 'true';
+        }
     } else {
         const startUrl = bundled ? assetUrl(mode === 'code' ? 'index.html' : app.entry) : (app.url || '');
         Object.assign(map, {
@@ -2501,7 +2615,9 @@ function buildTextFiles(app, opts) {
             FULLSCREEN: String(!!app.fullscreen),
             ZOOM: String(!!app.zoom),
             LIGHT: String(isLightColor(color)),
-            ENTRY: javaStr(mode === 'code' ? 'index.html' : (app.entry || 'index.html'))
+            ENTRY: javaStr(mode === 'code' ? 'index.html' : (app.entry || 'index.html')),
+            PERM_LIST: permRuntimeJava(app),
+            NEEDS_ALL_FILES: String(permNeedsAllFiles(app))
         });
         files.push(T(jp + 'MainActivity.java', renderTpl('web', map)), T(jp + 'LiveUpdater.java', renderTpl('live', map)));
     }
@@ -2513,6 +2629,7 @@ function buildTextFiles(app, opts) {
         '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
         '    <uses-permission android:name="android.permission.WAKE_LOCK" />'
     );
+    permManifestLines(app).forEach(l => { if (!perms.includes(l)) perms.push(l); });
     const manifest = [
         '<?xml version="1.0" encoding="utf-8"?>',
         '<manifest xmlns:android="http://schemas.android.com/apk/res/android">'
@@ -2520,6 +2637,7 @@ function buildTextFiles(app, opts) {
         '    <application',
         '        android:allowBackup="true"',
         '        android:icon="@mipmap/ic_launcher"',
+        '        android:roundIcon="@mipmap/ic_launcher"',
         '        android:label="@string/app_name"',
         '        android:supportsRtl="true"',
         '        android:usesCleartextTraffic="true"',
@@ -2611,8 +2729,6 @@ function buildTextFiles(app, opts) {
         T('app/src/main/res/values/strings.xml', ['<?xml version="1.0" encoding="utf-8"?>', '<resources>', '    <string name="app_name" formatted="false">' + androidStr(app.name) + '</string>', '</resources>', ''].join('\n')),
         T('app/src/main/res/values/styles.xml', ['<?xml version="1.0" encoding="utf-8"?>', '<resources>', '    <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">', '        <item name="android:windowBackground">@android:color/white</item>', '    </style>', '</resources>', ''].join('\n')),
         T('app/src/main/res/values-v28/styles.xml', ['<?xml version="1.0" encoding="utf-8"?>', '<resources>', '    <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">', '        <item name="android:windowBackground">@android:color/white</item>', '        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>', '    </style>', '</resources>', ''].join('\n')),
-        T('app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml', ['<?xml version="1.0" encoding="utf-8"?>', '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">', '    <background android:drawable="@drawable/ic_launcher_background" />', '    <foreground android:drawable="@mipmap/ic_launcher_fg" />', '</adaptive-icon>', ''].join('\n')),
-        T('app/src/main/res/drawable/ic_launcher_background.xml', ['<?xml version="1.0" encoding="utf-8"?>', '<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">', '    <solid android:color="' + color + '" />', '</shape>', ''].join('\n')),
         T('.github/workflows/build-apk.yml', workflowYaml({ python: mode === 'python', playBuild: !!app.playBuild })),
         T('pure-init.gradle', INIT_GRADLE),
         T('README-AR.txt', README_AR)
@@ -3061,8 +3177,18 @@ async function downloadBuildAsset(app, kind, btn) {
         download(blob, name);
         toast('بدأ تنزيل ' + name + ' 📦 — إذا انحفظ باسم "download" بدون امتداد، غيّر اسمه وضيف ' + (isAab ? '.aab' : '.apk') + ' بآخره قبل ما تستخدمه', 5000);
     } catch (e) {
-        toast('تعذر التنزيل داخل الصفحة، رح افتحه برابط مباشر', 3500);
-        window.open(lb.isPrivate ? lb.releaseUrl : url, '_blank', 'noopener');
+        /* المتصفح يمنع طلبات GitHub من ملف مفتوح محلياً (file://). ننزّل بنفس التبويب بدون ما نطلعك لصفحة GitHub، بس الاسم يصير اللي يحدده GitHub تلقائي (app.apk) */
+        if (lb.isPrivate) {
+            toast('المستودع خاص، والمتصفح ما يقدر يحمّله مباشرة وهو ملف محلي عندك. بفتحلك صفحة GitHub، سجّل دخولك وحمّل app.apk من هناك', 6000);
+            const a = document.createElement('a');
+            a.href = lb.releaseUrl; a.target = '_blank'; a.rel = 'noopener';
+            document.body.appendChild(a); a.click(); a.remove();
+        } else {
+            toast('التنزيل المباشر بالاسم ما يشتغل من ملف محلي مفتوح بالمتصفح (قيد أمان بالمتصفح نفسه). حمّلنا الملف بس GitHub يسميه app.apk تلقائي — غيّر الاسم بعدين إذا تريد', 6500);
+            const a = document.createElement('a');
+            a.href = url; a.download = name; a.rel = 'noopener';
+            document.body.appendChild(a); a.click(); a.remove();
+        }
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = prevText; }
     }
@@ -3141,7 +3267,7 @@ function newApp() {
     return {
         id, name: '', pkg: 'com.pure.app' + id, mode: 'python', icon: '',
         url: '', code: '', files: null, zipName: '', entry: 'index.html',
-        srcCode: '', srcFiles: null, srcZipName: '', srcEntry: '', srcLibs: '',
+        srcCode: '', srcFiles: null, srcZipName: '', srcEntry: '', srcLibs: '', srcExtraJava: [], permissions: [],
         pyRun: 'console', pyPort: 8080, bg: false, live: false, liveBuilt: false, liveVersion: 0, jdk: '17', playBuild: false,
         seoTitle: '', seoDesc: '', site: null,
         fullscreen: false, portrait: false, zoom: false, privateRepo: false,
@@ -3159,7 +3285,7 @@ function migrate(a) {
         ['pyCode', 'pyFiles', 'pyZipName', 'pyEntry', 'pyReqs'].forEach(k => { delete a[k]; });
     }
     const d = newApp();
-    ['srcCode', 'srcFiles', 'srcZipName', 'srcEntry', 'srcLibs', 'pyRun', 'pyPort', 'bg', 'live', 'liveBuilt', 'liveVersion', 'jdk', 'playBuild', 'seoTitle', 'seoDesc', 'site'].forEach(k => { if (a[k] === undefined) a[k] = d[k]; });
+    ['srcCode', 'srcFiles', 'srcZipName', 'srcEntry', 'srcLibs', 'srcExtraJava', 'permissions', 'pyRun', 'pyPort', 'bg', 'live', 'liveBuilt', 'liveVersion', 'jdk', 'playBuild', 'seoTitle', 'seoDesc', 'site'].forEach(k => { if (a[k] === undefined) a[k] = d[k]; });
     return a;
 }
 
@@ -3481,6 +3607,7 @@ function fillForm(d) {
     $('fJdk').value = d.jdk || '17';
     $('fSeoTitle').value = d.seoTitle || '';
     $('fSeoDesc').value = d.seoDesc || '';
+    renderPerms(d.permissions || []);
     document.querySelectorAll('#viewEdit .invalid').forEach(x => x.classList.remove('invalid'));
     setPyRun(d.pyRun || 'console');
     setMode(d.mode);
@@ -3512,7 +3639,19 @@ function readForm() {
     d.jdk = $('fJdk').value || '17';
     d.seoTitle = $('fSeoTitle').value.trim();
     d.seoDesc = $('fSeoDesc').value.trim();
+    d.permissions = [...document.querySelectorAll('#permsGroup input[data-perm]:checked')].map(el => el.dataset.perm);
     return d;
+}
+
+function renderPerms(selected) {
+    const box = $('permsGroup');
+    const sel = new Set(selected || []);
+    box.innerHTML = '<div class="live-hint">فعّل أي إذن تحتاجه — التطبيق يطلبه من المستخدم أول ما يفتح.</div>' +
+        Object.keys(PERM_CATALOG).map(k => {
+            const p = PERM_CATALOG[k];
+            return '<div class="toggle-item"><span>' + esc(p.label) + '<br><small style="opacity:.7">' + esc(p.hint) + '</small></span>' +
+                '<label class="switch"><input type="checkbox" data-perm="' + k + '"' + (sel.has(k) ? ' checked' : '') + '><span class="slider"></span></label></div>';
+        }).join('');
 }
 
 function openEditor(app) {
@@ -3687,18 +3826,27 @@ $('iconSlot').onclick = () => $('iconInput').click();
 $('iconSlot').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('iconInput').click(); } };
 $('iconInput').onchange = async e => {
     const f = e.target.files[0];
-    e.target.value = '';
     if (!f) return;
     try { S.draft.icon = await fileToIconData(f); S.dirty = true; renderIcon(); }
-    catch (err) { toast(err.message || 'تعذر قراءة الصورة'); }
+    catch (err) { toast(err.message || 'تعذر قراءة الصورة. جرب تختار الصورة من جديد', 4000); }
+    finally { e.target.value = ''; }
 };
 $('iconRm').onclick = () => { S.draft.icon = ''; S.dirty = true; renderIcon(); };
 
 /* ZIP للموقع */
+async function readFileBytesSafe(file) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+        try { return await file.arrayBuffer(); }
+        catch (e) {
+            if (attempt === 2 || !/permission|could not be read/i.test(e.message || '')) throw e;
+            await new Promise(r => setTimeout(r, 200));
+        }
+    }
+}
 async function readZipFile(file) {
     if (!file) return null;
     if (!/\.zip$/i.test(file.name) && !/zip/i.test(file.type)) { toast('اختار ملف بصيغة ZIP'); return null; }
-    return readZip(await file.arrayBuffer());
+    return readZip(await readFileBytesSafe(file));
 }
 function checkSize(files, maxTotal) {
     let total = 0;
@@ -3722,7 +3870,7 @@ async function loadWebZip(file) {
     finally { renderZipStats(); }
 }
 $('zipDrop').onclick = () => $('zipInput').click();
-$('zipInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; loadWebZip(f); };
+$('zipInput').onchange = e => { const f = e.target.files[0]; loadWebZip(f).finally(() => { e.target.value = ''; }); };
 
 /* ZIP للغات */
 async function loadSrcZip(file) {
@@ -3730,21 +3878,23 @@ async function loadSrcZip(file) {
     try {
         const entries = await readZipFile(file);
         if (!entries) return;
-        const { files, entry } = normalizeSrcZip(entries, S.draft.mode);
+        const { files, entry, extraJava } = normalizeSrcZip(entries, S.draft.mode);
         checkSize(files, 60);
+        if (extraJava && extraJava.length) checkSize(extraJava, 20);
         S.draft.srcFiles = files;
         S.draft.srcZipName = file.name;
         S.draft.srcEntry = entry;
+        S.draft.srcExtraJava = extraJava || [];
         $('fSrcEntry').value = entry;
         S.dirty = true;
-        toast('تم فك الـ ZIP ✅ (' + files.length + ' ملف)' + (entry ? '، الرئيسي: ' + entry : ''), 3500);
+        toast('تم فك الـ ZIP ✅ (' + files.length + ' ملف)' + (entry ? '، الرئيسي: ' + entry : '') + (extraJava && extraJava.length ? ' + ' + extraJava.length + ' ملف جافا/كوتلن راح يتبنى وياها' : ''), 4500);
     } catch (e) { toast(e.message || 'تعذر قراءة الـ ZIP', 4500); }
     finally { renderSrc(); updateEntryHint(); }
 }
 $('srcZipBtn').onclick = () => $('srcZipInput').click();
-$('srcZipInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; loadSrcZip(f); };
+$('srcZipInput').onchange = e => { const f = e.target.files[0]; loadSrcZip(f).finally(() => { e.target.value = ''; }); };
 $('srcZipRm').onclick = () => {
-    S.draft.srcFiles = null; S.draft.srcZipName = ''; S.draft.srcEntry = '';
+    S.draft.srcFiles = null; S.draft.srcZipName = ''; S.draft.srcEntry = ''; S.draft.srcExtraJava = [];
     $('fSrcEntry').value = '';
     S.dirty = true;
     renderSrc(); updateEntryHint();
@@ -3752,16 +3902,17 @@ $('srcZipRm').onclick = () => {
 $('srcFileBtn').onclick = () => { $('srcInput').accept = LANG_UI[S.draft.mode] ? LANG_UI[S.draft.mode].accept : ''; $('srcInput').click(); };
 $('srcInput').onchange = async e => {
     const f = e.target.files[0];
-    e.target.value = '';
     if (!f) return;
     try {
-        $('fSrcCode').value = await f.text();
+        const text = await f.text();
+        $('fSrcCode').value = text;
         S.draft.srcFiles = null; S.draft.srcZipName = ''; S.draft.srcEntry = '';
         $('fSrcEntry').value = '';
         S.dirty = true;
         renderSrc(); updateEntryHint();
         toast('تم تحميل الملف');
-    } catch (err) { toast('تعذر قراءة الملف'); }
+    } catch (err) { toast('تعذر قراءة الملف، جرب تختاره من جديد', 4000); }
+    finally { e.target.value = ''; }
 };
 $('srcSampleBtn').onclick = () => {
     const m = S.draft.mode;
@@ -3794,7 +3945,7 @@ async function loadAndroidZip(file) {
     finally { renderAndroid(); }
 }
 $('apkDrop').onclick = () => $('apkZipInput').click();
-$('apkZipInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; loadAndroidZip(f); };
+$('apkZipInput').onchange = e => { const f = e.target.files[0]; loadAndroidZip(f).finally(() => { e.target.value = ''; }); };
 
 [['zipDrop', loadWebZip], ['apkDrop', loadAndroidZip]].forEach(([id, fn]) => {
     const el = $(id);
@@ -3807,10 +3958,10 @@ $('apkZipInput').onchange = e => { const f = e.target.files[0]; e.target.value =
 $('codeFileBtn').onclick = () => $('htmlInput').click();
 $('htmlInput').onchange = async e => {
     const f = e.target.files[0];
-    e.target.value = '';
     if (!f) return;
-    try { $('fCode').value = await f.text(); S.dirty = true; toast('تم تحميل الملف'); }
-    catch (err) { toast('تعذر قراءة الملف'); }
+    try { const text = await f.text(); $('fCode').value = text; S.dirty = true; toast('تم تحميل الملف'); }
+    catch (err) { toast('تعذر قراءة الملف، جرب تختاره من جديد', 4000); }
+    finally { e.target.value = ''; }
 };
 $('codePreview').onclick = () => {
     const c = $('fCode').value;
@@ -3830,6 +3981,8 @@ function iconCanvas(app, img, size) {
     const c = document.createElement('canvas');
     c.width = c.height = size;
     const x = c.getContext('2d');
+    x.imageSmoothingEnabled = true;
+    x.imageSmoothingQuality = 'high';
     const r = size * 0.22;
     x.save();
     x.beginPath();
@@ -3841,7 +3994,8 @@ function iconCanvas(app, img, size) {
     x.closePath();
     x.clip();
     if (img) {
-        x.drawImage(img, 0, 0, size, size);
+        const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, m2 = Math.min(w, h);
+        x.drawImage(img, (w - m2) / 2, (h - m2) / 2, m2, m2, 0, 0, size, size);
     } else {
         const g = x.createLinearGradient(0, 0, size, size);
         g.addColorStop(0, '#ff3d8b');
@@ -3861,16 +4015,36 @@ function iconForegroundCanvas(app, img, size) {
     const c = document.createElement('canvas');
     c.width = c.height = size;
     const x = c.getContext('2d');
-    const m = size * 0.18;
-    const inner = size - m * 2;
+    x.imageSmoothingEnabled = true;
+    x.imageSmoothingQuality = 'high';
     if (img) {
-        x.drawImage(img, m, m, inner, inner);
+        const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, m2 = Math.min(w, h);
+        x.drawImage(img, (w - m2) / 2, (h - m2) / 2, m2, m2, 0, 0, size, size);
     } else {
+        const inner = size * 0.64;
         x.fillStyle = '#fff';
         x.font = 'bold ' + Math.round(inner * 0.62) + 'px "Segoe UI", Tahoma, sans-serif';
         x.textAlign = 'center';
         x.textBaseline = 'middle';
         x.fillText(Array.from((app.name || 'P').trim())[0] || 'P', size / 2, size / 2 + size * 0.02);
+    }
+    return c;
+}
+function iconAdaptiveBackgroundCanvas(app, img, size) {
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const x = c.getContext('2d');
+    x.imageSmoothingEnabled = true;
+    x.imageSmoothingQuality = 'high';
+    if (img) {
+        const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, m2 = Math.min(w, h);
+        x.drawImage(img, (w - m2) / 2, (h - m2) / 2, m2, m2, 0, 0, size, size);
+    } else {
+        const g = x.createLinearGradient(0, 0, size, size);
+        g.addColorStop(0, '#ff3d8b');
+        g.addColorStop(1, '#9d0a52');
+        x.fillStyle = g;
+        x.fillRect(0, 0, size, size);
     }
     return c;
 }
@@ -3889,7 +4063,6 @@ async function buildProjectFiles(app, opts) {
     const sizes = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };
     for (const k of Object.keys(sizes)) {
         files.push({ path: 'app/src/main/res/mipmap-' + k + '/ic_launcher.png', data: await canvasBytes(iconCanvas(app, img, sizes[k])) });
-        files.push({ path: 'app/src/main/res/mipmap-' + k + '/ic_launcher_fg.png', data: await canvasBytes(iconForegroundCanvas(app, img, sizes[k])) });
     }
     if (app.mode === 'code') files.push({ path: 'app/src/main/assets/www/index.html', data: enc.encode(app.code) });
     if (app.mode === 'zip') for (const f of app.files) files.push({ path: 'app/src/main/assets/www/' + f.path, data: f.data });
